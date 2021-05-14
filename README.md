@@ -3,8 +3,8 @@
 
 ## Papers
 
-- MapReduce: Simplified Data Processing on Large Clusters √
+- MapReduce: Simplified Data Processing on Large Clusters ✅
 - 
 
 ## Lab
-
+### Lab1 MapReduce ✅

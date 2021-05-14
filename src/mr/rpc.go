@@ -14,6 +14,25 @@ import "strconv"
 // and reply for an RPC.
 //
 
+type DistributeTaskArgs struct {}
+
+type DistributeTaskReply struct {
+	Task Task
+}
+
+type ReportTaskArgs struct {
+	Task Task
+}
+
+type ReportTaskReply struct {}
+
+type NReduceArgs struct {}
+
+type NReduceReply struct {
+	NReduce int
+}
+
+
 type ExampleArgs struct {
 	X int
 }
