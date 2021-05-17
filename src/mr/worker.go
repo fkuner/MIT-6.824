@@ -60,7 +60,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		task := reply.Task
 		if "map" == task.TaskType {
 			filename := task.Name
-			fmt.Printf("map phase filename:%v\n", filename)
+			log.Printf("map phase filename:%v\n", filename)
 			// map
 			file, err := os.Open(filename)
 			if err != nil {
@@ -100,20 +100,20 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				file.Close()
 			}
-			task.State = "completed"
-			ReportTask(task)
+			//task.State = "completed"
+			ReportTask(task.Id, task.TaskType)
 		} else if "reduce" == task.TaskType {
 			// reduce
-			fmt.Printf("reduce phase task:%v\n", task.Name)
+			log.Printf("reduce phase task:%v\n", task.Name)
 			var reduceFiles []string
 			pattern := "mr-(.)-" + task.Name
 			reg, err := regexp.Compile(pattern)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 			rd, err := ioutil.ReadDir(".")
 			if err != nil {
-				fmt.Println("read dir fail:", err)
+				log.Println("read dir fail:", err)
 			}
 			for _, fi := range rd {
 				if fi.IsDir() {
@@ -125,20 +125,19 @@ func Worker(mapf func(string, string) []KeyValue,
 					}
 				}
 			}
-			fmt.Printf("reduceFiles:%v\n", reduceFiles)
+			log.Printf("reduceFiles:%v\n", reduceFiles)
 			var intermediate ByKey
 			// Todo:并发
 			for _, reduceFile := range reduceFiles {
 				file, err := os.Open(reduceFile)
 				if err != nil {
-					//log.Fatalf("cannot open %v\n", file)
-					fmt.Printf("cannot open %v\n", file)
+					log.Fatalf("cannot open %v\n", file)
 				}
 				dec := json.NewDecoder(file)
 
 				var kva []KeyValue
 				if err := dec.Decode(&kva); err != nil {
-					fmt.Printf("decode file %v\n", err)
+					log.Printf("decode file %v\n", err)
 					break
 				}
 				intermediate = append(intermediate, kva...)
@@ -172,8 +171,8 @@ func Worker(mapf func(string, string) []KeyValue,
 					panic(err)
 				}
 			}
-			task.State = "completed"
-			ReportTask(task)
+			//task.State = "completed"
+			ReportTask(task.Id, task.TaskType)
 		} else {
 			time.Sleep(1 * time.Second)
 		}
@@ -183,19 +182,20 @@ func Worker(mapf func(string, string) []KeyValue,
 	// CallExample()
 }
 
-func RequestTask() (DistributeTaskReply, bool) {
-	args := DistributeTaskArgs{}
-	reply := DistributeTaskReply{}
-	ok := call("Master.DistributeTask", args, &reply)
+func RequestTask() (RequestTaskReply, bool) {
+	args := RequestTaskArgs{}
+	reply := RequestTaskReply{}
+	ok := call("Master.RequestTask", args, &reply)
 	if !ok  {
 		return reply, false
 	}
 	return reply, true
 }
 
-func ReportTask(task Task) (ReportTaskReply, bool) {
+func ReportTask(taskId int, taskType string) (ReportTaskReply, bool) {
 	args := ReportTaskArgs{}
-	args.Task = task
+	args.TaskId = taskId
+	args.TaskType = taskType
 	reply := ReportTaskReply{}
 	ok := call("Master.ReportTask", args, &reply)
 	if !ok {

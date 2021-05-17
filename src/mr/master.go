@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"sync"
@@ -31,43 +30,42 @@ type Task struct {
 
 // Your code here -- RPC handlers for the worker to call.
 
-func (m *Master) DistributeTask(args *DistributeTaskArgs, reply *DistributeTaskReply) error {
+func (m *Master) RequestTask(args *RequestTaskArgs, reply *RequestTaskReply) error {
 	if !m.mapPhaseDone() {
 		m.mu.Lock()
+		defer m.mu.Unlock()
 		for _, mapTask := range m.mapTask {
 			if "idle" == mapTask.State {
 				mapTask.State = "in-process"
 				reply.Task = *mapTask
 				go m.traceTask(mapTask)
-				m.mu.Unlock()
 				return nil
 			}
 		}
-		m.mu.Unlock()
 		return nil
 	}
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, reduceTask := range m.reduceTask {
 		if "idle" == reduceTask.State {
 			reduceTask.State = "in-process"
 			reply.Task = *reduceTask
 			go m.traceTask(reduceTask)
-			m.mu.Unlock()
 			return nil
 		}
 	}
-	m.mu.Unlock()
-	//return errors.New("task end")
 	return nil
 }
 
 func (m *Master)ReportTask(args *ReportTaskArgs, reply *ReportTaskReply) error {
-	task := args.Task
-	taskId := task.Id
-	if "map" == task.TaskType {
-		m.mapTask[taskId] = &task
+	taskId := args.TaskId
+	taskType := args.TaskType
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if "map" == taskType {
+		m.mapTask[taskId].State = "completed"
 	} else {
-		m.reduceTask[taskId] = &task
+		m.reduceTask[taskId].State = "completed"
 	}
 	return nil
 }
@@ -94,20 +92,19 @@ func (m *Master) traceTask(task *Task) {
 	for  {
 		time.Sleep(1 * time.Second)
 		eT := time.Since(bT)
-		var state string
-		if "map" == task.TaskType {
-			state = m.mapTask[task.Id].State
-		} else {
-			state = m.reduceTask[task.Id].State
-		}
-		fmt.Printf(" %v task %v, state:%v, exec time:%v\n", task.TaskType, task.Id, state, eT.Seconds())
+		m.mu.Lock()
+		state := task.State
+		log.Printf(" %v task %v, state:%v, exec time:%v\n", task.TaskType, task.Id, state, eT.Seconds())
 		if "completed" == state {
-			fmt.Printf("%v task %v completed\n", task.TaskType, task.Id)
+			log.Printf("%v task %v completed\n", task.TaskType, task.Id)
+			m.mu.Unlock()
 			return
 		} else if eT > 10 * time.Second {
 			task.State = "idle"
+			m.mu.Unlock()
 			return
 		}
+		m.mu.Unlock()
 	}
 }
 
@@ -146,6 +143,8 @@ func (m *Master) Done() bool {
 	ret := true
 
 	// Your code here.
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, task := range m.reduceTask {
 		if task.State == "completed" {
 			continue

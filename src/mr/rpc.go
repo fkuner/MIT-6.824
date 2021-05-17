@@ -14,14 +14,15 @@ import "strconv"
 // and reply for an RPC.
 //
 
-type DistributeTaskArgs struct {}
+type RequestTaskArgs struct {}
 
-type DistributeTaskReply struct {
+type RequestTaskReply struct {
 	Task Task
 }
 
 type ReportTaskArgs struct {
-	Task Task
+	TaskId int
+	TaskType string
 }
 
 type ReportTaskReply struct {}
