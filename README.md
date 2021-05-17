@@ -18,5 +18,6 @@ web crawler execrise
 - The Google File System
 
 ## Lab
-- Lab1 MapReduce ✅
-- Lab2 Raft 
+### Lab1 MapReduce ✅
+todo: shell
+### Lab2 Raft 

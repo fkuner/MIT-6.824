@@ -79,7 +79,6 @@ func Worker(mapf func(string, string) []KeyValue,
 			}
 			for k, v := range kvReduceMap {
 				ofile := "mr-" + strconv.Itoa(task.Id) + "-" + strconv.Itoa(k)
-				//ioutil.TempFile(ofile, "*")
 				_, err := os.Stat(ofile)
 				if err != nil {
 					if os.IsNotExist(err) {
@@ -100,7 +99,6 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				file.Close()
 			}
-			//task.State = "completed"
 			ReportTask(task.Id, task.TaskType)
 		} else if "reduce" == task.TaskType {
 			// reduce
@@ -145,7 +143,10 @@ func Worker(mapf func(string, string) []KeyValue,
 
 			sort.Sort(intermediate)
 			oname := "mr-out-" + task.Name
-			ofile, _ := os.Create(oname)
+			tmpFile, err := ioutil.TempFile(".", "tmp-")
+			if err != nil {
+				log.Fatal("Cannot create temporary file", err)
+			}
 			i := 0
 			for i < len(intermediate) {
 				j := i + 1
@@ -159,19 +160,23 @@ func Worker(mapf func(string, string) []KeyValue,
 				output := reducef(intermediate[i].Key, values)
 
 				// this is the correct format for each line of Reduce output.
-				fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+				fmt.Fprintf(tmpFile, "%v %v\n", intermediate[i].Key, output)
 
 				i = j
 			}
-			ofile.Close()
+			err = os.Rename(tmpFile.Name(), oname)
+			if err != nil {
+				log.Fatal("Cannot rename temporary file", err)
+			}
 			// 删除临时文件
+			os.Remove(tmpFile.Name())
+			// 删除中间文件
 			for _, reduceFile := range reduceFiles {
 				err = os.Remove(reduceFile)
 				if err != nil {
 					panic(err)
 				}
 			}
-			//task.State = "completed"
 			ReportTask(task.Id, task.TaskType)
 		} else {
 			time.Sleep(1 * time.Second)
