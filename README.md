@@ -79,5 +79,5 @@ mu.Unlock()
 
 ![](images/vm-ft.png)
 ## Lab
-### Lab1 MapReduce 
+### Lab1 MapReduce
 ### Lab2 Raft 
