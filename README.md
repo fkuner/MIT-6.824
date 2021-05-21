@@ -67,6 +67,14 @@ while condition == false {
 mu.Unlock()
 ```
 
+### Lecture6 Fault Tolerance Raft
+
+Leader -> 高效
+
+ELECTION TIMER -> START ELECTION
+
+term++, requestVote
+
 ## Papers
 ### MapReduce: Simplified Data Processing on Large Clusters 
 ![](images/mapreduce.png)
@@ -78,6 +86,11 @@ mu.Unlock()
 信息进行replay，因此可以和primary VM有相同的执行，从而达到备份的目的。
 
 ![](images/vm-ft.png)
+
+### In Search of an Understandable Consensus Algorithm (Extended Version)
+
+
+
 ## Lab
 ### Lab1 MapReduce
 ### Lab2 Raft 
