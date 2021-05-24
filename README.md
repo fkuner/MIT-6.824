@@ -67,13 +67,15 @@ while condition == false {
 mu.Unlock()
 ```
 
-### Lecture6 Fault Tolerance Raft
+### Lecture6 Fault Tolerance Raft (1)
 
 Leader -> 高效
 
 ELECTION TIMER -> START ELECTION
 
 term++, requestVote
+
+### Lecture7 Fault Tolerance Raft (2)
 
 ## Papers
 ### MapReduce: Simplified Data Processing on Large Clusters 
@@ -88,7 +90,6 @@ term++, requestVote
 ![](images/vm-ft.png)
 
 ### In Search of an Understandable Consensus Algorithm (Extended Version)
-
 
 
 ## Lab
