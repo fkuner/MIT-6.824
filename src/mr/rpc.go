@@ -33,7 +33,6 @@ type NReduceReply struct {
 	NReduce int
 }
 
-
 type ExampleArgs struct {
 	X int
 }

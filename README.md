@@ -79,7 +79,9 @@ term++, requestVote
 
 ## Papers
 ### MapReduce: Simplified Data Processing on Large Clusters 
+
 ![](images/mapreduce.png)
+
 ### The Google File System 
 ### The Design of a Practical System for Fault-Tolerant Virtual Machines
 
