@@ -269,19 +269,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		return
 	}
-
 	// heartbeat
 	if args.Entries == nil {
 		rf.currentTerm = args.Term
 		rf.state = FOLLOWER
 		rf.resetLastTime()
+		if args.LeaderCommit > rf.commitIndex {
+			rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(len(rf.log))))
+		}
 		reply.Success = true
 		reply.Term = args.Term
 		return
 	}
 	entry := args.Entries[0]
 	// PrevLogIndex为0时的特殊情况
-
 	if rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.Success = false
 		reply.Term = args.Term
@@ -294,7 +295,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.log = append(rf.log, entry)
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(len(rf.log))))
-		log.Printf("test111")
 	}
 	reply.Success = true
 }
@@ -319,6 +319,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
+	rf.initIndex()
 	index := len(rf.log)
 	term := rf.currentTerm
 	_, isLeader := rf.GetState()
@@ -332,9 +333,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
+	//log.Printf("[%d] log:%v", rf.me, rf.log)
 	rf.RaftInfo("Start")
-	//var wg sync.WaitGroup
-	//wg.Add(len(rf.peers) / 2)
+	done := make(chan bool)
 	for server, _ := range rf.peers {
 		if server == rf.me{
 			continue
@@ -366,21 +367,28 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 				ok := rf.sendAppendEntries(server, &args, &reply)
 				log.Printf("[%d] reply:%v", rf.me, reply)
 				if !ok {
+					log.Println("test222")
 					return
 				}
 				if reply.Success {
-					//wg.Done()
+					done <- true
 					rf.matchIndex[server] = preLogIndex
 					break
 				}
-				rf.nextIndex[server]--
+				//else if !reply.Success && reply.Term == rf.currentTerm {
+				//	rf.nextIndex[server]--
+				//} else {
+				//
+				//}
+				time.Sleep(10 * time.Millisecond)
 			}
 		}(server)
 	}
-	log.Printf("test1")
-	//wg.Wait()
+	for i :=0 ; i < len(rf.peers)/2; i++ {
+		<-done
+	}
 	rf.commitIndex = index
-	log.Printf("hahhahah")
+	log.Printf("[%d] apply %d", rf.me, rf.commitIndex)
 	return index, term, isLeader
 }
 
@@ -503,6 +511,7 @@ func (rf* Raft) ExecuteLeaderAction() {
 				args := AppendEntriesArgs{
 					Term: rf.currentTerm,
 					LeaderId: server,
+					LeaderCommit: rf.commitIndex,
 				}
 				reply := AppendEntriesReply{}
 				rf.sendAppendEntries(server, &args, &reply)
@@ -523,7 +532,7 @@ func (rf* Raft) Apply(applyCh chan ApplyMsg) {
 				Command: rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}
-			log.Println("apply")
+			//log.Printf("[%d] apply\n", rf.me)
 		}
 		rf.mu.Unlock()
 		time.Sleep(10 * time.Millisecond)
