@@ -224,6 +224,8 @@ func TestFailNoAgree2B(t *testing.T) {
 		t.Fatalf("unexpected index %v", index2)
 	}
 
+	time.Sleep(2 * time.Second)
+
 	cfg.one(1000, servers, true)
 
 	cfg.end()
