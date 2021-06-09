@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"bytes"
+	"labgob"
 	"math"
 	"math/rand"
 	"sync"
@@ -26,8 +28,8 @@ import (
 import "sync/atomic"
 import "../labrpc"
 
-// import "bytes"
-// import "../labgob"
+//import "bytes"
+//import "../labgob"
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -125,13 +127,13 @@ func (rf *Raft) GetState() (int, bool) {
 //
 func (rf *Raft) persist() {
 	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -143,17 +145,18 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var log []Entry
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
+		DPrintf("Decode Error")
+	} else {
+	  rf.currentTerm = currentTerm
+	  rf.votedFor = votedFor
+	  rf.log = log
+	}
 }
 
 //
@@ -194,6 +197,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = FOLLOWER
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
+		rf.persist()
 	}
 	lastLogIndex := len(rf.log) - 1
 	lastLogTerm := rf.log[lastLogIndex].Term
@@ -202,6 +206,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
+		rf.persist()
 		rf.resetLastTime()
 		return
 	}
@@ -271,6 +276,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	rf.currentTerm = args.Term
+	rf.persist()
 	rf.lastTime = time.Now()
 	rf.state = FOLLOWER
 
@@ -308,6 +314,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		for _, entry := range args.Entries {
 			rf.log = append(rf.log, entry)
 		}
+		rf.persist()
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
@@ -348,6 +355,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.nextIndex[rf.me] = len(rf.log)
 		rf.matchIndex[rf.me] = len(rf.log) - 1
 	}
+	rf.persist()
 	index := len(rf.log) - 1
 	return  index, term, isLeader
 }
@@ -386,6 +394,7 @@ func (rf *Raft) initRaft() {
 		rf.nextIndex = append(rf.nextIndex, 1)
 		rf.matchIndex = append(rf.matchIndex, 0)
 	}
+	rf.persist()
 }
 
 // Reinitialized after election
@@ -396,6 +405,7 @@ func (rf *Raft) initIndex() {
 		rf.nextIndex[i] = len(rf.log)
 		rf.matchIndex[i] = 0
 	}
+	rf.persist()
 }
 
 func (rf *Raft) resetLastTime() {
@@ -427,6 +437,7 @@ func (rf *Raft) ExecuteElection() {
 	rf.state = CANDIDATE
 	rf.currentTerm++
 	rf.votedFor = rf.me
+	rf.persist()
 	// Reset election timer
 	rf.lastTime = time.Now()
 	DPrintf("[%d] attempting an election at term %d", rf.me, rf.currentTerm)
@@ -492,15 +503,6 @@ func (rf* Raft) SendHeartBeat() {
 			}
 			entries := make([]Entry, len(rf.log) - 1 - preLog.Index)
 			copy(entries, rf.log[preLog.Index + 1:])
-
-			//preLogIndex := rf.nextIndex[server] - 1
-			//preLogTerm := rf.log[preLogIndex].Term
-			//entries := make([]Entry, len(rf.log) - 1 - preLogIndex)
-			//copy(entries, rf.log[rf.nextIndex[server]:rf.nextIndex[server] + 1])
-			//var entries []Entry
-			//if len(rf.log) - 1 - preLogIndex > 0 {
-			//	entries = append(entries, rf.log[rf.nextIndex[server]])
-			//}
 			args := AppendEntriesArgs{
 				Term: currentTerm,
 				LeaderId: rf.me,
@@ -519,68 +521,30 @@ func (rf* Raft) SendHeartBeat() {
 			}
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
-			if len(entries) > 0 {
-				if reply.Success {
-					done++
-					if done >= rf.peerNum / 2 {
-						rf.commitIndex = rf.nextIndex[server] + len(entries) - 1
-						DPrintf("commitIndex:%d", rf.commitIndex)
-					}
-					rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
-					rf.matchIndex[server] = preLog.Index
-				} else {
-					if reply.Term > rf.currentTerm {
-						rf.currentTerm = reply.Term
-						rf.state = FOLLOWER
-						return
-					} else {
-						i := len(rf.log) - 1
-						for ; i > 0; i-- {
-							if rf.log[i].Term == reply.ConflictTerm {
-								break
-							}
-						}
-						if i > 0 {
-							rf.nextIndex[server] = i + 1
-						} else {
-							rf.nextIndex[server] = reply.ConflictIndex
-							DPrintf("[%d] testaaa", rf.me)
-						}
-
-
-						//if reply.ConflictTerm == -1 {
-						//	DPrintf("testsdjfi")
-						//	rf.nextIndex[server] = reply.ConflictIndex
-						//}else {
-						//	rf.nextIndex[server]--
-						//}
-					}
+			if reply.Success {
+				done++
+				if done >= rf.peerNum / 2 {
+					rf.commitIndex = rf.nextIndex[server] + len(entries) - 1
 				}
+				rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
+				rf.matchIndex[server] = preLog.Index
 			} else {
-				if !reply.Success {
-					if reply.Term > rf.currentTerm {
-						rf.currentTerm = reply.Term
-						rf.state = FOLLOWER
-						return
+				if reply.Term > rf.currentTerm {
+					rf.currentTerm = reply.Term
+					rf.state = FOLLOWER
+					rf.persist()
+					return
+				} else {
+					i := len(rf.log) - 1
+					for ; i > 0; i-- {
+						if rf.log[i].Term == reply.ConflictTerm {
+							break
+						}
+					}
+					if i > 0 {
+						rf.nextIndex[server] = i + 1
 					} else {
-						//if reply.ConflictTerm == -1 {
-						//	rf.nextIndex[server] = reply.ConflictIndex
-						//}else {
-						//	rf.nextIndex[server]--
-						//}
-						i := len(rf.log) - 1
-						for ; i > 0; i-- {
-							if rf.log[i].Term == reply.ConflictTerm {
-								break
-							}
-						}
-						if i > 0 {
-							rf.nextIndex[server] = i + 1
-						} else {
-							DPrintf("[%d] testaaa", rf.me)
-							rf.nextIndex[server] = reply.ConflictIndex
-						}
-						//rf.nextIndex[server]--
+						rf.nextIndex[server] = reply.ConflictIndex
 					}
 				}
 			}
