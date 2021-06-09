@@ -260,9 +260,6 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-
-	//rf.RaftInfo("test")
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -279,13 +276,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Term = args.Term
 
-	//if len(rf.log) <= args.PrevLogIndex || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
-	//	reply.ConflictTerm = rf.log[len(rf.log)-1].Term
-	//	reply.Success = false
-	//	return
-	//}
-
 	if len(rf.log) <= args.PrevLogIndex {
+		reply.ConflictTerm = -1
 		reply.ConflictIndex = len(rf.log)
 		reply.Success = false
 		return
@@ -293,7 +285,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.ConflictTerm = rf.log[args.PrevLogIndex].Term
-		reply.ConflictIndex =
+		index := args.PrevLogIndex - 1
+		for ; index > 0; index-- {
+			if rf.log[index].Term != rf.log[args.PrevLogIndex].Term {
+				break
+			}
+		}
+		reply.ConflictIndex = index + 1
 		reply.Success = false
 		return
 	}
@@ -307,7 +305,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if len(rf.log) > entry.Index && rf.log[entry.Index].Term != entry.Term {
 			rf.log = rf.log[:entry.Index]
 		}
-		rf.log = append(rf.log, entry)
+		for _, entry := range args.Entries {
+			rf.log = append(rf.log, entry)
+		}
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
@@ -345,8 +345,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := rf.state == LEADER
 	if isLeader {
 		rf.log = append(rf.log, Entry{Index: len(rf.log), Term: rf.currentTerm, Command: command})
-		//rf.nextIndex[rf.me] = len(rf.log)
-		//rf.matchIndex[rf.me] = len(rf.log) - 1
+		rf.nextIndex[rf.me] = len(rf.log)
+		rf.matchIndex[rf.me] = len(rf.log) - 1
 	}
 	index := len(rf.log) - 1
 	return  index, term, isLeader
@@ -486,19 +486,26 @@ func (rf* Raft) SendHeartBeat() {
 		currentTerm := rf.currentTerm
 		go func(server int) {
 			rf.mu.Lock()
-			preLogIndex := rf.nextIndex[server] - 1
-			preLogTerm := rf.log[preLogIndex].Term
+			var preLog Entry
+			if rf.nextIndex[server] > 1 {
+				preLog = rf.log[rf.nextIndex[server] - 1]
+			}
+			entries := make([]Entry, len(rf.log) - 1 - preLog.Index)
+			copy(entries, rf.log[preLog.Index + 1:])
+
+			//preLogIndex := rf.nextIndex[server] - 1
+			//preLogTerm := rf.log[preLogIndex].Term
 			//entries := make([]Entry, len(rf.log) - 1 - preLogIndex)
 			//copy(entries, rf.log[rf.nextIndex[server]:rf.nextIndex[server] + 1])
-			var entries []Entry
-			if len(rf.log) - 1 - preLogIndex > 0 {
-				entries = append(entries, rf.log[rf.nextIndex[server]])
-			}
+			//var entries []Entry
+			//if len(rf.log) - 1 - preLogIndex > 0 {
+			//	entries = append(entries, rf.log[rf.nextIndex[server]])
+			//}
 			args := AppendEntriesArgs{
 				Term: currentTerm,
 				LeaderId: rf.me,
-				PrevLogIndex: preLogIndex,
-				PrevLogTerm: preLogTerm,
+				PrevLogIndex: preLog.Index,
+				PrevLogTerm: preLog.Term,
 				Entries: entries,
 				LeaderCommit: rf.commitIndex,
 			}
@@ -508,7 +515,6 @@ func (rf* Raft) SendHeartBeat() {
 			ok := rf.sendAppendEntries(server, &args, &reply)
 			DPrintf("[%d] reply:%v", rf.me, reply)
 			if !ok {
-				//DPrintf("[%d] ok == false", rf.me)
 				return
 			}
 			rf.mu.Lock()
@@ -517,17 +523,37 @@ func (rf* Raft) SendHeartBeat() {
 				if reply.Success {
 					done++
 					if done >= rf.peerNum / 2 {
-						rf.commitIndex = rf.nextIndex[server]
+						rf.commitIndex = rf.nextIndex[server] + len(entries) - 1
+						DPrintf("commitIndex:%d", rf.commitIndex)
 					}
 					rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
-					rf.matchIndex[server] = preLogIndex
+					rf.matchIndex[server] = preLog.Index
 				} else {
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.state = FOLLOWER
 						return
 					} else {
-						rf.nextIndex[server]--
+						i := len(rf.log) - 1
+						for ; i > 0; i-- {
+							if rf.log[i].Term == reply.ConflictTerm {
+								break
+							}
+						}
+						if i > 0 {
+							rf.nextIndex[server] = i + 1
+						} else {
+							rf.nextIndex[server] = reply.ConflictIndex
+							DPrintf("[%d] testaaa", rf.me)
+						}
+
+
+						//if reply.ConflictTerm == -1 {
+						//	DPrintf("testsdjfi")
+						//	rf.nextIndex[server] = reply.ConflictIndex
+						//}else {
+						//	rf.nextIndex[server]--
+						//}
 					}
 				}
 			} else {
@@ -537,7 +563,24 @@ func (rf* Raft) SendHeartBeat() {
 						rf.state = FOLLOWER
 						return
 					} else {
-						rf.nextIndex[server]--
+						//if reply.ConflictTerm == -1 {
+						//	rf.nextIndex[server] = reply.ConflictIndex
+						//}else {
+						//	rf.nextIndex[server]--
+						//}
+						i := len(rf.log) - 1
+						for ; i > 0; i-- {
+							if rf.log[i].Term == reply.ConflictTerm {
+								break
+							}
+						}
+						if i > 0 {
+							rf.nextIndex[server] = i + 1
+						} else {
+							DPrintf("[%d] testaaa", rf.me)
+							rf.nextIndex[server] = reply.ConflictIndex
+						}
+						//rf.nextIndex[server]--
 					}
 				}
 			}
