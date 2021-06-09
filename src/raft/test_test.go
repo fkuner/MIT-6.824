@@ -8,7 +8,10 @@ package raft
 // test with the original before submitting.
 //
 
-import "testing"
+import (
+	"log"
+	"testing"
+)
 import "fmt"
 import "time"
 import "math/rand"
@@ -65,6 +68,9 @@ func TestReElection2A(t *testing.T) {
 
 	// if the old leader rejoins, that shouldn't
 	// disturb the new leader.
+
+	log.Println("leader1 reconnect")
+
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
 
@@ -385,25 +391,39 @@ func TestBackup2B(t *testing.T) {
 	cfg.disconnect((leader1 + 3) % servers)
 	cfg.disconnect((leader1 + 4) % servers)
 
+	log.Printf("111111111111111")
+
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
 	}
 
+	log.Printf("2222222222222")
+
 	time.Sleep(RaftElectionTimeout / 2)
+
+	log.Printf("33333333333333")
+
 
 	cfg.disconnect((leader1 + 0) % servers)
 	cfg.disconnect((leader1 + 1) % servers)
+
+	log.Printf("44444444444444")
 
 	// allow other partition to recover
 	cfg.connect((leader1 + 2) % servers)
 	cfg.connect((leader1 + 3) % servers)
 	cfg.connect((leader1 + 4) % servers)
 
+	log.Printf("5555555555555")
+
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
+
+	log.Printf("6666666666666")
+
 
 	// now another partitioned leader and one follower
 	leader2 := cfg.checkOneLeader()
@@ -413,31 +433,49 @@ func TestBackup2B(t *testing.T) {
 	}
 	cfg.disconnect(other)
 
+	log.Printf("7777777777")
+
+
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
 	}
 
+	log.Printf("88888888888")
+
+
 	time.Sleep(RaftElectionTimeout / 2)
+
+	log.Printf("999999999999")
+
 
 	// bring original leader back to life,
 	for i := 0; i < servers; i++ {
 		cfg.disconnect(i)
 	}
+	log.Printf("1010101010101010101010")
+
 	cfg.connect((leader1 + 0) % servers)
 	cfg.connect((leader1 + 1) % servers)
 	cfg.connect(other)
+
+	log.Printf("111111111111111111")
+
 
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
 
+	log.Printf("12121212121212121212")
+
 	// now everyone
 	for i := 0; i < servers; i++ {
 		cfg.connect(i)
 	}
 	cfg.one(rand.Int(), servers, true)
+
+	log.Printf("1313131313131313131313")
 
 	cfg.end()
 }
