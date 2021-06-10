@@ -776,7 +776,7 @@ func TestUnreliableAgree2C(t *testing.T) {
 		cfg.one(iters, 1, true)
 	}
 
-	cfg.setunreliable(false)
+	//cfg.setunreliable(true)
 
 	wg.Wait()
 

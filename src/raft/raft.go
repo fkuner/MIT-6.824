@@ -19,7 +19,7 @@ package raft
 
 import (
 	"bytes"
-	"labgob"
+	//"labgob"
 	"math"
 	"math/rand"
 	"sync"
@@ -29,7 +29,7 @@ import "sync/atomic"
 import "../labrpc"
 
 //import "bytes"
-//import "../labgob"
+import "../labgob"
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -107,7 +107,6 @@ type Entry struct {
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-
 	var term int
 	var isleader bool
 	// Your code here (2A).
@@ -143,6 +142,7 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
+	DPrintf("[%d] readPersist", rf.me)
 	// Your code here (2C).
 	// Example:
 	r := bytes.NewBuffer(data)
@@ -304,21 +304,26 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if args.Entries != nil {
 		entry := args.Entries[0]
-		//if entry.Term != rf.currentTerm {
-		//	reply.Success = false
-		//	return
-		//}
 		if len(rf.log) > entry.Index && rf.log[entry.Index].Term != entry.Term {
 			rf.log = rf.log[:entry.Index]
 		}
 		for _, entry := range args.Entries {
-			rf.log = append(rf.log, entry)
+			flag := 0
+			for _, e := range rf.log {
+				if e.Command == entry.Command {
+					flag = 1
+					break
+				}
+			}
+			if flag == 0 {
+				rf.log = append(rf.log, entry)
+			}
+			DPrintf("[%d] append 1 entry %v", rf.me, entry.Command)
 		}
 		rf.persist()
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
-		//rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(entry.Index)))
 		rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(len(rf.log)-1)))
 	}
 	reply.Success = true
@@ -394,7 +399,6 @@ func (rf *Raft) initRaft() {
 		rf.nextIndex = append(rf.nextIndex, 1)
 		rf.matchIndex = append(rf.matchIndex, 0)
 	}
-	rf.persist()
 }
 
 // Reinitialized after election
@@ -425,6 +429,8 @@ func (rf *Raft) CallRequestVote(server int, term int) bool {
 	if !ok {
 		return false
 	}
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if reply.Term > rf.currentTerm {
 		rf.state = FOLLOWER
 	}
@@ -483,13 +489,25 @@ func (rf *Raft) ExecuteLeaderAction() {
 		}
 		DPrintf("[%d] execute leader action", rf.me)
 		rf.SendHeartBeat()
+		rf.mu.Lock()
+		for i := rf.commitIndex + 1; i < len(rf.log); i++ {
+			match := 0
+			for j:= 0; j < rf.peerNum; j++{
+				if rf.matchIndex[j] >= i && rf.log[i].Term == rf.currentTerm {
+					match++
+				}
+			}
+			if match > rf.peerNum / 2 {
+				rf.commitIndex = i
+			}
+		}
+		rf.mu.Unlock()
 		// heartbeat time
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
 func (rf* Raft) SendHeartBeat() {
-	done := 0
 	for server, _ := range rf.peers {
 		if server == rf.me {
 			continue
@@ -511,21 +529,17 @@ func (rf* Raft) SendHeartBeat() {
 				Entries: entries,
 				LeaderCommit: rf.commitIndex,
 			}
-			DPrintf("[%d] args:%v", rf.me, args)
+			DPrintf("[%d] args:%v %d----->%d", rf.me, args, rf.me, server)
 			reply := AppendEntriesReply{}
 			rf.mu.Unlock()
 			ok := rf.sendAppendEntries(server, &args, &reply)
-			DPrintf("[%d] reply:%v", rf.me, reply)
+			DPrintf("[%d] reply:%v %d----->%d", rf.me, reply, server, rf.me)
 			if !ok {
 				return
 			}
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			if reply.Success {
-				done++
-				if done >= rf.peerNum / 2 {
-					rf.commitIndex = rf.nextIndex[server] + len(entries) - 1
-				}
 				rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
 				rf.matchIndex[server] = preLog.Index
 			} else {
@@ -578,7 +592,7 @@ func (rf *Raft) RaftInfo(funcName string) {
 	DPrintf("votedFor:%d", rf.votedFor)
 	DPrintf("log:")
 	for _, entry := range rf.log {
-		DPrintf("\tterm:%d", entry.Term)
+		DPrintf("\t[term:%d, command:%v]", entry.Term, entry.Command)
 	}
 	DPrintf("commitIndex:%d", rf.commitIndex)
 	DPrintf("lastApplied:%d", rf.lastApplied)
@@ -638,8 +652,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.initRaft()
+	rf.persist()
 	//rf.initIndex()
-	//rf.RaftInfo("Make")
 
 	// background goroutine that will kick off leader election periodically
 	go func() {
@@ -679,6 +693,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.RaftInfo("Make")
 
 	return rf
 }
