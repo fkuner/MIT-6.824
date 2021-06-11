@@ -310,15 +310,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		for _, entry := range args.Entries {
 			flag := 0
 			for _, e := range rf.log {
-				if e.Command == entry.Command {
+				if e == entry {
 					flag = 1
 					break
 				}
 			}
 			if flag == 0 {
 				rf.log = append(rf.log, entry)
+				DPrintf("[%d] append 1 entry %v", rf.me, entry.Command)
 			}
-			DPrintf("[%d] append 1 entry %v", rf.me, entry.Command)
 		}
 		rf.persist()
 	}
@@ -350,7 +350,6 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	DPrintf("[%d] command:%v", rf.me, command)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	term := rf.currentTerm
@@ -359,6 +358,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.log = append(rf.log, Entry{Index: len(rf.log), Term: rf.currentTerm, Command: command})
 		rf.nextIndex[rf.me] = len(rf.log)
 		rf.matchIndex[rf.me] = len(rf.log) - 1
+		DPrintf("[%d] command:%v", rf.me, command)
 	}
 	rf.persist()
 	index := len(rf.log) - 1
@@ -532,7 +532,10 @@ func (rf* Raft) SendHeartBeat() {
 			DPrintf("[%d] args:%v %d----->%d", rf.me, args, rf.me, server)
 			reply := AppendEntriesReply{}
 			rf.mu.Unlock()
+			start := time.Now()
 			ok := rf.sendAppendEntries(server, &args, &reply)
+			cost := time.Since(start)
+			DPrintf("time:%s", cost)
 			DPrintf("[%d] reply:%v %d----->%d", rf.me, reply, server, rf.me)
 			if !ok {
 				return
