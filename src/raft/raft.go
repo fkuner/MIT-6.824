@@ -18,8 +18,9 @@ package raft
 //
 
 import (
-	"bytes"
+	//"bytes"
 	//"labgob"
+	//"labrpc"
 	"math"
 	"math/rand"
 	"sync"
@@ -28,7 +29,7 @@ import (
 import "sync/atomic"
 import "../labrpc"
 
-//import "bytes"
+import "bytes"
 import "../labgob"
 
 //
@@ -532,10 +533,7 @@ func (rf* Raft) SendHeartBeat() {
 			DPrintf("[%d] args:%v %d----->%d", rf.me, args, rf.me, server)
 			reply := AppendEntriesReply{}
 			rf.mu.Unlock()
-			start := time.Now()
 			ok := rf.sendAppendEntries(server, &args, &reply)
-			cost := time.Since(start)
-			DPrintf("time:%s", cost)
 			DPrintf("[%d] reply:%v %d----->%d", rf.me, reply, server, rf.me)
 			if !ok {
 				return
@@ -543,6 +541,9 @@ func (rf* Raft) SendHeartBeat() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			if reply.Success {
+				if rf.nextIndex[server] + len(entries) > len(rf.log) {
+					return
+				}
 				rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
 				rf.matchIndex[server] = preLog.Index
 			} else {
@@ -655,7 +656,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.initRaft()
-	rf.persist()
+	//rf.persist()
 	//rf.initIndex()
 
 	// background goroutine that will kick off leader election periodically
