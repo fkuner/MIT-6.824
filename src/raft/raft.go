@@ -111,8 +111,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
-	//rf.mu.Lock()
-	//defer rf.mu.Unlock()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	term = rf.currentTerm
 	if rf.state == LEADER {
 		isleader = true
@@ -689,7 +689,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			} else {
 				rf.mu.Unlock()
 			}
-			DPrintf("haha test2")
 			// Kick off election
 			if rf.lastTime.Add(duration).Before(time.Now()) {
 				DPrintf("[%d] election timeout", rf.me)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const Debug = 1
@@ -44,9 +45,7 @@ type KVServer struct {
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-	DPrintf("server test1")
 	_, isLeader := kv.rf.GetState()
-	DPrintf("server test2")
 	if !isLeader {
 		reply.Err = ErrWrongLeader
 		return
@@ -57,16 +56,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		Key: args.Key,
 	}
 	DPrintf("[server] Get Op:{Op:%v, Key:%v}", op.Op, op.Key)
-	_, _, ok := kv.rf.Start(op)
-	DPrintf("start:%v", ok)
-	DPrintf("key:%v, value:%v", args.Key, kv.data[args.Key])
-	DPrintf("apply test1")
-	for i := 0; i < 4; i++ {
-		DPrintf("inner apply %d", i)
-		<- kv.applyCh
-	}
+	kv.rf.Start(op)
 	applyMsg := <- kv.applyCh
-	DPrintf("apply test2")
 	if applyMsg.Command == op {
 		value, ok := kv.data[args.Key]
 		if !ok {
@@ -93,15 +84,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		Value: args.Value,
 	}
 	DPrintf("[server] PutAppend Op:{Op:%v, Key:%v, Value:%v}", op.Op, op.Key, op.Value)
-	_, _, ok := kv.rf.Start(op)
-	DPrintf("start:%v", ok)
-	DPrintf("apply test1")
-	for i := 0; i < 4; i++ {
-		DPrintf("inner apply %d", i)
-		<- kv.applyCh
-	}
-	applyMsg := <-kv.applyCh
-	DPrintf("apply test2")
+	kv.rf.Start(op)
+	applyMsg := <- kv.applyCh
+	DPrintf("hahaha")
 	if applyMsg.Command == op {
 		if args.Op == "Put" {
 			kv.data[args.Key] = args.Value
@@ -163,6 +148,17 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.data = make(map[string]string)
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		for {
+			_, isLeader := kv.rf.GetState()
+			if !isLeader {
+				<- kv.applyCh
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
 
 	// You may need initialization code here.
 	return kv
