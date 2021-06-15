@@ -152,7 +152,6 @@ func partitioner(t *testing.T, cfg *config, ch chan bool, done *int32) {
 // size) shouldn't exceed 8*maxraftstate. If maxraftstate is negative,
 // snapshots shouldn't be used.
 func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash bool, partitions bool, maxraftstate int) {
-
 	title := "Test: "
 	if unreliable {
 		// the network drops RPC requests and replies.
@@ -179,6 +178,8 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 	const nservers = 5
 	cfg := make_config(t, nservers, unreliable, maxraftstate)
 	defer cfg.cleanup()
+
+	time.Sleep(1 * time.Second)
 
 	cfg.begin(title)
 
@@ -447,6 +448,7 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 
 func TestBasic3A(t *testing.T) {
 	// Test: one client (3A) ...
+	go StartHTTPDebugger()
 	GenericTest(t, "3A", 1, false, false, false, -1)
 }
 

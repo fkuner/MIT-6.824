@@ -3,13 +3,13 @@ package kvraft
 import (
 	"../labgob"
 	"../labrpc"
-	"log"
 	"../raft"
+	"log"
 	"sync"
 	"sync/atomic"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -23,6 +23,9 @@ type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Op string
+	Key string
+	Value string
 }
 
 type KVServer struct {
@@ -35,15 +38,80 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	data map[string]string
 }
 
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	DPrintf("server test1")
+	_, isLeader := kv.rf.GetState()
+	DPrintf("server test2")
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+	DPrintf("[server %d] Execute Get", kv.me)
+	op := Op{
+		Op: "Get",
+		Key: args.Key,
+	}
+	DPrintf("[server] Get Op:{Op:%v, Key:%v}", op.Op, op.Key)
+	_, _, ok := kv.rf.Start(op)
+	DPrintf("start:%v", ok)
+	DPrintf("key:%v, value:%v", args.Key, kv.data[args.Key])
+	DPrintf("apply test1")
+	for i := 0; i < 4; i++ {
+		DPrintf("inner apply %d", i)
+		<- kv.applyCh
+	}
+	applyMsg := <- kv.applyCh
+	DPrintf("apply test2")
+	if applyMsg.Command == op {
+		value, ok := kv.data[args.Key]
+		if !ok {
+			reply.Err = ErrNoKey
+		}
+		reply.Err = OK
+		reply.Value = value
+	} else {
+		kv.applyCh <- applyMsg
+	}
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	_, isLeader := kv.rf.GetState()
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+	DPrintf("[server %d] Execute PutAppend", kv.me)
+	op := Op{
+		Op: args.Op,
+		Key: args.Key,
+		Value: args.Value,
+	}
+	DPrintf("[server] PutAppend Op:{Op:%v, Key:%v, Value:%v}", op.Op, op.Key, op.Value)
+	_, _, ok := kv.rf.Start(op)
+	DPrintf("start:%v", ok)
+	DPrintf("apply test1")
+	for i := 0; i < 4; i++ {
+		DPrintf("inner apply %d", i)
+		<- kv.applyCh
+	}
+	applyMsg := <-kv.applyCh
+	DPrintf("apply test2")
+	if applyMsg.Command == op {
+		if args.Op == "Put" {
+			kv.data[args.Key] = args.Value
+		} else {
+			kv.data[args.Key] += args.Value
+		}
+		reply.Err = OK
+	} else {
+		kv.applyCh <- applyMsg
+	}
 }
 
 //
@@ -94,8 +162,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.data = make(map[string]string)
 
 	// You may need initialization code here.
-
 	return kv
 }

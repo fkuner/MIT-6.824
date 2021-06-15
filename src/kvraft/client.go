@@ -1,6 +1,8 @@
 package kvraft
 
-import "../labrpc"
+import (
+	"../labrpc"
+)
 import "crypto/rand"
 import "math/big"
 
@@ -37,8 +39,32 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-
 	// You will have to modify this function.
+	DPrintf("[Client] Execute Get Operation")
+	args := GetArgs{
+		Key: key,
+	}
+	DPrintf("[Client] GetArgs:{Key:%v}", args.Key)
+	 for i := 0; i < len(ck.servers); i++ {
+		reply := GetReply{}
+		ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
+		DPrintf("test1")
+		if !ok {
+			DPrintf("Get access false")
+		}
+		if reply.Err == ErrWrongLeader {
+			DPrintf("Get wrong leader")
+			continue
+		} else if reply.Err == ErrNoKey {
+			DPrintf("Get no key")
+			return ""
+		} else {
+			DPrintf("Get success")
+			DPrintf("[Client] GetReply:%v", reply)
+			return reply.Value
+		}
+		DPrintf("test2")
+	}
 	return ""
 }
 
@@ -54,24 +80,33 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	DPrintf("[Client] Execute PutAppend Operation")
 	args := PutAppendArgs{
 		Key: key,
 		Value: value,
 		Op: op,
 	}
-	reply := PutAppendReply{}
-	for i, _ := range ck.servers {
+	DPrintf("[Client] PutAppendArgs: {Key:%v, Value:%v, Op:%v}", args.Key, args.Value, args.Op)
+	for i := 0; i < len(ck.servers); i++ {
+		reply := PutAppendReply{}
 		ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+		DPrintf("test1")
 		if !ok {
-			DPrintf("ok == false")
+			DPrintf("PutAppend access false")
 		}
 		if reply.Err == ErrWrongLeader {
+			DPrintf("PutAppend wrong leader")
 			continue
 		} else if reply.Err == ErrNoKey {
+			DPrintf("PutAppend no key")
 		} else {
-
+			DPrintf("[Client] PutAppend success")
+			DPrintf("[Client] PutAppendReply:%v", reply)
+			return
 		}
+		DPrintf("test2")
 	}
+
 
 }
 

@@ -111,8 +111,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	//rf.mu.Lock()
+	//defer rf.mu.Unlock()
 	term = rf.currentTerm
 	if rf.state == LEADER {
 		isleader = true
@@ -266,7 +266,10 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	DPrintf("AppendEntries test1")
 	rf.mu.Lock()
+	DPrintf("AppendEntries test2")
+
 	defer rf.mu.Unlock()
 
 	if args.Term < rf.currentTerm {
@@ -332,7 +335,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	DPrintf("sendAppendEntries test1")
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	DPrintf("sendAppendEntries test2")
 	return ok
 }
 
@@ -352,7 +357,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	//defer rf.mu.Unlock()
 	term := rf.currentTerm
 	isLeader := rf.state == LEADER
 	if isLeader {
@@ -363,6 +368,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.persist()
 	index := len(rf.log) - 1
+	rf.mu.Unlock()
 	return  index, term, isLeader
 }
 
@@ -536,6 +542,7 @@ func (rf* Raft) SendHeartBeat() {
 			ok := rf.sendAppendEntries(server, &args, &reply)
 			DPrintf("[%d] reply:%v %d----->%d", rf.me, reply, server, rf.me)
 			if !ok {
+				DPrintf("ok == false")
 				return
 			}
 			rf.mu.Lock()
@@ -575,11 +582,13 @@ func (rf *Raft) Apply(applyCh chan ApplyMsg) {
 		rf.mu.Lock()
 		if rf.commitIndex > rf.lastApplied {
 			rf.lastApplied++
+			DPrintf("Apply test1")
 			applyCh <- ApplyMsg{
 				CommandValid: true,
 				Command:      rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}
+			DPrintf("Apply test2")
 			DPrintf("[%d] apply command %v", rf.me, rf.log[rf.lastApplied].Command)
 		}
 		rf.mu.Unlock()
@@ -680,6 +689,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			} else {
 				rf.mu.Unlock()
 			}
+			DPrintf("haha test2")
 			// Kick off election
 			if rf.lastTime.Add(duration).Before(time.Now()) {
 				DPrintf("[%d] election timeout", rf.me)
