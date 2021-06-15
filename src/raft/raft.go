@@ -656,8 +656,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.initRaft()
-	//rf.persist()
-	//rf.initIndex()
 
 	// background goroutine that will kick off leader election periodically
 	go func() {

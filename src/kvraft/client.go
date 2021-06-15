@@ -54,6 +54,25 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	args := PutAppendArgs{
+		Key: key,
+		Value: value,
+		Op: op,
+	}
+	reply := PutAppendReply{}
+	for i, _ := range ck.servers {
+		ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+		if !ok {
+			DPrintf("ok == false")
+		}
+		if reply.Err == ErrWrongLeader {
+			continue
+		} else if reply.Err == ErrNoKey {
+		} else {
+
+		}
+	}
+
 }
 
 func (ck *Clerk) Put(key string, value string) {
