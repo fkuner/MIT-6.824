@@ -266,12 +266,8 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	DPrintf("AppendEntries test1")
 	rf.mu.Lock()
-	DPrintf("AppendEntries test2")
-
 	defer rf.mu.Unlock()
-
 	if args.Term < rf.currentTerm {
 		rf.state = FOLLOWER
 		reply.Success = false
@@ -335,9 +331,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	DPrintf("sendAppendEntries test1")
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-	DPrintf("sendAppendEntries test2")
 	return ok
 }
 
@@ -582,13 +576,11 @@ func (rf *Raft) Apply(applyCh chan ApplyMsg) {
 		rf.mu.Lock()
 		if rf.commitIndex > rf.lastApplied {
 			rf.lastApplied++
-			DPrintf("Apply test1")
 			applyCh <- ApplyMsg{
 				CommandValid: true,
 				Command:      rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}
-			DPrintf("Apply test2")
 			DPrintf("[%d] apply command %v", rf.me, rf.log[rf.lastApplied].Command)
 		}
 		rf.mu.Unlock()

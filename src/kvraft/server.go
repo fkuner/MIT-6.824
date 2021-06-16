@@ -50,12 +50,12 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	DPrintf("[server %d] Execute Get", kv.me)
+	DPrintf("[Server] Execute Get")
 	op := Op{
 		Op: "Get",
 		Key: args.Key,
 	}
-	DPrintf("[server] Get Op:{Op:%v, Key:%v}", op.Op, op.Key)
+	DPrintf("[Server] Get Op:{Op:%v, Key:%v}", op.Op, op.Key)
 	kv.rf.Start(op)
 	applyMsg := <- kv.applyCh
 	if applyMsg.Command == op {
@@ -77,16 +77,15 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	DPrintf("[server %d] Execute PutAppend", kv.me)
+	DPrintf("[Server] Execute PutAppend")
 	op := Op{
 		Op: args.Op,
 		Key: args.Key,
 		Value: args.Value,
 	}
-	DPrintf("[server] PutAppend Op:{Op:%v, Key:%v, Value:%v}", op.Op, op.Key, op.Value)
+	DPrintf("[Server] PutAppend Op:{Op:%v, Key:%v, Value:%v}", op.Op, op.Key, op.Value)
 	kv.rf.Start(op)
 	applyMsg := <- kv.applyCh
-	DPrintf("hahaha")
 	if applyMsg.Command == op {
 		if args.Op == "Put" {
 			kv.data[args.Key] = args.Value
