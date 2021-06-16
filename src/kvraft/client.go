@@ -10,6 +10,8 @@ import "math/big"
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	serialNum int
+	clientID int64
 }
 
 func nrand() int64 {
@@ -23,6 +25,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.serialNum = 0
+	ck.clientID = nrand()
 	return ck
 }
 
@@ -40,27 +44,30 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 //
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
-	DPrintf("[Client] Execute Get Operation")
+	DPrintf("[Client %d] Execute Get Operation", ck.clientID)
 	args := GetArgs{
 		Key: key,
+		SerialNum: ck.serialNum,
 	}
-	DPrintf("[Client] GetArgs:{Key:%v}", args.Key)
+	ck.serialNum++
+	DPrintf("[Client %d] GetArgs:{Key:%v, SerialNum:%d}", ck.clientID, args.Key, args.SerialNum)
 	for {
 		for i := 0; i < len(ck.servers); i++ {
 			reply := GetReply{}
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
 			if !ok {
-				DPrintf("[Client] Get access false")
+				DPrintf("[Client %d] Get access false", ck.clientID)
+				continue
 			}
 			if reply.Err == ErrWrongLeader {
-				DPrintf("[Client] Get wrong leader")
+				//DPrintf("[Client] Get wrong leader")
 				continue
 			} else if reply.Err == ErrNoKey {
-				DPrintf("[Client] Get no key")
+				DPrintf("[Client %d] Get no key", ck.clientID)
 				return ""
 			} else {
-				DPrintf("[Client] Get success")
-				DPrintf("[Client] GetReply:%v", reply)
+				DPrintf("[Client %d] Get success", ck.clientID)
+				DPrintf("[Client %d] GetReply:%v", ck.clientID, reply.Err)
 				return reply.Value
 			}
 		}
@@ -79,29 +86,32 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	DPrintf("[Client] Execute PutAppend Operation")
+	DPrintf("[Client %d] Execute PutAppend Operation", ck.clientID)
 	args := PutAppendArgs{
 		Key: key,
 		Value: value,
 		Op: op,
+		SerialNum: ck.serialNum,
 	}
-	DPrintf("[Client] PutAppendArgs: {Key:%v, Value:%v, Op:%v}", args.Key, args.Value, args.Op)
+	ck.serialNum++
+	DPrintf("[Client %d] PutAppendArgs: {Key:%v, Value:%v, Op:%v, SerialNum:%v}", ck.clientID, args.Key, args.Value, args.Op, args.SerialNum, )
 	for {
 		for i := 0; i < len(ck.servers); i++ {
 			reply := PutAppendReply{}
 			ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
 			if !ok {
-				DPrintf("[Client] PutAppend access false")
+				DPrintf("[Client %d] PutAppend access false", ck.clientID)
+				continue
 			}
 			if reply.Err == ErrWrongLeader {
-				DPrintf("[Client] PutAppend wrong leader")
+				//DPrintf("[Client] PutAppend wrong leader")
 				continue
 			} else if reply.Err == ErrNoKey {
-				DPrintf("[Client] PutAppend no key")
+				DPrintf("[Client %d] PutAppend no key", ck.clientID)
 				return
 			} else {
-				DPrintf("[Client] PutAppend success")
-				DPrintf("[Client] PutAppendReply:%v", reply)
+				DPrintf("[Client %d] PutAppend success", ck.clientID)
+				DPrintf("[Client %d] PutAppendReply:%s", ck.clientID, reply.Err)
 				return
 			}
 		}

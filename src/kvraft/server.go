@@ -40,6 +40,7 @@ type KVServer struct {
 
 	// Your definitions here.
 	data map[string]string
+	lastSerialNum int
 }
 
 
@@ -50,18 +51,21 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	DPrintf("[Server] Execute Get")
+	DPrintf("[Server %d] Execute Get", kv.me)
 	op := Op{
 		Op: "Get",
 		Key: args.Key,
 	}
-	DPrintf("[Server] Get Op:{Op:%v, Key:%v}", op.Op, op.Key)
+	DPrintf("[Server %d] Get Op:{Op:%v, Key:%v}", kv.me, op.Op, op.Key)
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
 	kv.rf.Start(op)
 	applyMsg := <- kv.applyCh
 	if applyMsg.Command == op {
 		value, ok := kv.data[args.Key]
 		if !ok {
 			reply.Err = ErrNoKey
+			return
 		}
 		reply.Err = OK
 		reply.Value = value
@@ -77,13 +81,15 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	DPrintf("[Server] Execute PutAppend")
+	DPrintf("[Server %d] Execute PutAppend", kv.me)
 	op := Op{
 		Op: args.Op,
 		Key: args.Key,
 		Value: args.Value,
 	}
-	DPrintf("[Server] PutAppend Op:{Op:%v, Key:%v, Value:%v}", op.Op, op.Key, op.Value)
+	DPrintf("[Server %d] PutAppend Op:{Op:%v, Key:%v, Value:%v}", kv.me, op.Op, op.Key, op.Value)
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
 	kv.rf.Start(op)
 	applyMsg := <- kv.applyCh
 	if applyMsg.Command == op {
@@ -94,8 +100,10 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		}
 		reply.Err = OK
 	} else {
+		DPrintf("test")
 		kv.applyCh <- applyMsg
 	}
+	return
 }
 
 //
@@ -147,6 +155,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.data = make(map[string]string)
+	kv.lastSerialNum = -1
 
 	go func() {
 		time.Sleep(1 * time.Second)
