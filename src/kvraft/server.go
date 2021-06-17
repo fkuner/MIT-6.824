@@ -7,7 +7,6 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 const Debug = 1
@@ -27,6 +26,8 @@ type Op struct {
 	Op string
 	Key string
 	Value string
+	ClientId int
+	SerialNum int
 }
 
 type KVServer struct {
@@ -40,7 +41,9 @@ type KVServer struct {
 
 	// Your definitions here.
 	data map[string]string
-	lastSerialNum int
+	lastSerialNum map[int]int
+	lastResponse map[int]interface{}
+	applyChMap map[int]chan Op
 }
 
 
@@ -55,13 +58,23 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	op := Op{
 		Op: "Get",
 		Key: args.Key,
+		ClientId: args.ClientId,
+		SerialNum: args.SerialNum,
 	}
 	DPrintf("[Server %d] Get Op:{Op:%v, Key:%v}", kv.me, op.Op, op.Key)
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	kv.rf.Start(op)
-	applyMsg := <- kv.applyCh
-	if applyMsg.Command == op {
+	//kv.mu.Lock()
+	//defer kv.mu.Unlock()
+	index, _, _ := kv.rf.Start(op)
+	ch := make(chan Op)
+	kv.applyChMap[index] = ch
+	applyOp := <-ch
+	if _, ok := kv.lastSerialNum[applyOp.ClientId]; !ok {
+		kv.lastSerialNum[applyOp.ClientId] = -1
+	}
+	if applyOp.SerialNum <= kv.lastSerialNum[applyOp.ClientId] {
+		reply = kv.lastResponse[applyOp.ClientId].(*GetReply)
+		return
+	} else {
 		value, ok := kv.data[args.Key]
 		if !ok {
 			reply.Err = ErrNoKey
@@ -69,8 +82,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 		reply.Err = OK
 		reply.Value = value
-	} else {
-		kv.applyCh <- applyMsg
+		kv.lastSerialNum[op.ClientId]++
+		kv.lastResponse[op.ClientId] = reply
 	}
 }
 
@@ -86,24 +99,47 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		Op: args.Op,
 		Key: args.Key,
 		Value: args.Value,
+		ClientId: args.ClientId,
+		SerialNum: args.SerialNum,
 	}
 	DPrintf("[Server %d] PutAppend Op:{Op:%v, Key:%v, Value:%v}", kv.me, op.Op, op.Key, op.Value)
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	kv.rf.Start(op)
-	applyMsg := <- kv.applyCh
-	if applyMsg.Command == op {
+	index, _, _ := kv.rf.Start(op)
+	ch := make(chan Op)
+	kv.applyChMap[index] = ch
+	applyOp := <-ch
+	if _, ok := kv.lastSerialNum[applyOp.ClientId]; !ok {
+		kv.lastSerialNum[applyOp.ClientId] = -1
+	}
+	if applyOp.SerialNum <= kv.lastSerialNum[applyOp.ClientId] {
+		reply = kv.lastResponse[applyOp.ClientId].(*PutAppendReply)
+		return
+	} else {
 		if args.Op == "Put" {
 			kv.data[args.Key] = args.Value
 		} else {
 			kv.data[args.Key] += args.Value
 		}
 		reply.Err = OK
-	} else {
-		DPrintf("test")
-		kv.applyCh <- applyMsg
+		kv.lastSerialNum[applyOp.ClientId]++
+		kv.lastResponse[applyOp.ClientId] = reply
 	}
-	return
+}
+
+func (kv *KVServer) consumeApplyCh() {
+	for applyMsg := range kv.applyCh {
+		op := applyMsg.Command.(Op)
+		switch op.Op {
+		case "Put":
+			kv.data[op.Key] = op.Value
+		case "Append":
+			kv.data[op.Key] += op.Value
+		}
+		index := applyMsg.CommandIndex
+		ch := kv.applyChMap[index]
+		ch <- op
+	}
 }
 
 //
@@ -155,18 +191,22 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.data = make(map[string]string)
-	kv.lastSerialNum = -1
+	kv.lastSerialNum = make(map[int]int)
+	kv.lastResponse = make(map[int]interface{})
+	kv.applyChMap = make(map[int]chan Op)
 
-	go func() {
-		time.Sleep(1 * time.Second)
-		for {
-			_, isLeader := kv.rf.GetState()
-			if !isLeader {
-				<- kv.applyCh
-			}
-			time.Sleep(1 * time.Millisecond)
-		}
-	}()
+	//go func() {
+	//	time.Sleep(1 * time.Second)
+	//	for {
+	//		_, isLeader := kv.rf.GetState()
+	//		if !isLeader {
+	//			<- kv.applyCh
+	//		}
+	//		time.Sleep(1 * time.Millisecond)
+	//	}
+	//}()
+
+	go kv.consumeApplyCh()
 
 	// You may need initialization code here.
 	return kv

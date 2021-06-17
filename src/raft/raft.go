@@ -351,7 +351,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
-	//defer rf.mu.Unlock()
+	defer rf.mu.Unlock()
 	term := rf.currentTerm
 	isLeader := rf.state == LEADER
 	if isLeader {
@@ -362,7 +362,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.persist()
 	index := len(rf.log) - 1
-	rf.mu.Unlock()
+
 	return  index, term, isLeader
 }
 
@@ -480,6 +480,7 @@ func (rf *Raft) ExecuteElection() {
 // ExecuteLeaderAction ...
 func (rf *Raft) ExecuteLeaderAction() {
 	rf.initIndex()
+	rf.Start("no-op")
 	for {
 		rf.mu.Lock()
 		if rf.state != LEADER {
@@ -536,7 +537,7 @@ func (rf* Raft) SendHeartBeat() {
 			ok := rf.sendAppendEntries(server, &args, &reply)
 			DPrintf("[%d] reply:%v %d----->%d", rf.me, reply, server, rf.me)
 			if !ok {
-				DPrintf("ok == false")
+				DPrintf("[%d] ok == false", rf.me)
 				return
 			}
 			rf.mu.Lock()
@@ -576,8 +577,13 @@ func (rf *Raft) Apply(applyCh chan ApplyMsg) {
 		rf.mu.Lock()
 		if rf.commitIndex > rf.lastApplied {
 			rf.lastApplied++
+			commandValid := true
+			//if rf.log[rf.lastApplied].Command == "no-op" {
+			//	DPrintf("test")
+			//	commandValid = false
+			//}
 			applyCh <- ApplyMsg{
-				CommandValid: true,
+				CommandValid: commandValid,
 				Command:      rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}

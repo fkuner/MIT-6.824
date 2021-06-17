@@ -11,7 +11,7 @@ type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
 	serialNum int
-	clientID int64
+	clientID int
 }
 
 func nrand() int64 {
@@ -26,7 +26,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.servers = servers
 	// You'll have to add code here.
 	ck.serialNum = 0
-	ck.clientID = nrand()
+	ck.clientID = int(nrand())
 	return ck
 }
 
@@ -47,6 +47,7 @@ func (ck *Clerk) Get(key string) string {
 	DPrintf("[Client %d] Execute Get Operation", ck.clientID)
 	args := GetArgs{
 		Key: key,
+		ClientId: ck.clientID,
 		SerialNum: ck.serialNum,
 	}
 	ck.serialNum++
@@ -67,7 +68,7 @@ func (ck *Clerk) Get(key string) string {
 				return ""
 			} else {
 				DPrintf("[Client %d] Get success", ck.clientID)
-				DPrintf("[Client %d] GetReply:%v", ck.clientID, reply.Err)
+				DPrintf("[Client %d] GetReply:%v, GetArgs:%v", ck.clientID, reply, args)
 				return reply.Value
 			}
 		}
@@ -91,6 +92,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Key: key,
 		Value: value,
 		Op: op,
+		ClientId: ck.clientID,
 		SerialNum: ck.serialNum,
 	}
 	ck.serialNum++
@@ -111,7 +113,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				return
 			} else {
 				DPrintf("[Client %d] PutAppend success", ck.clientID)
-				DPrintf("[Client %d] PutAppendReply:%s", ck.clientID, reply.Err)
+				DPrintf("[Client %d] PutAppendReply:%v, PutAppendArgs:%v", ck.clientID, reply, args)
 				return
 			}
 		}
