@@ -362,7 +362,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.persist()
 	index := len(rf.log) - 1
-
 	return  index, term, isLeader
 }
 
@@ -480,7 +479,7 @@ func (rf *Raft) ExecuteElection() {
 // ExecuteLeaderAction ...
 func (rf *Raft) ExecuteLeaderAction() {
 	rf.initIndex()
-	rf.Start("no-op")
+	//rf.Start("no-op")
 	for {
 		rf.mu.Lock()
 		if rf.state != LEADER {
@@ -576,17 +575,25 @@ func (rf *Raft) Apply(applyCh chan ApplyMsg) {
 	for {
 		rf.mu.Lock()
 		if rf.commitIndex > rf.lastApplied {
+			DPrintf("apply test1")
 			rf.lastApplied++
 			commandValid := true
-			//if rf.log[rf.lastApplied].Command == "no-op" {
-			//	DPrintf("test")
-			//	commandValid = false
+			//select {
+			//case applyCh <- ApplyMsg{
+			//	CommandValid: commandValid,
+			//	Command:      rf.log[rf.lastApplied].Command,
+			//	CommandIndex: rf.log[rf.lastApplied].Index,
+			//}:
+			//	DPrintf("Apply")
+			//case <-time.After(4 * time.Second):
+			//	DPrintf("Timeout")
 			//}
 			applyCh <- ApplyMsg{
 				CommandValid: commandValid,
 				Command:      rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}
+			DPrintf("apply test2")
 			DPrintf("[%d] apply command %v", rf.me, rf.log[rf.lastApplied].Command)
 		}
 		rf.mu.Unlock()

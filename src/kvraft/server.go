@@ -62,12 +62,28 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		SerialNum: args.SerialNum,
 	}
 	DPrintf("[Server %d] Get Op:{Op:%v, Key:%v}", kv.me, op.Op, op.Key)
-	//kv.mu.Lock()
-	//defer kv.mu.Unlock()
-	index, _, _ := kv.rf.Start(op)
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	index, _, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
 	ch := make(chan Op)
 	kv.applyChMap[index] = ch
 	applyOp := <-ch
+	//applyOp := func(ch chan Op) Op{
+	//	select {
+	//	case op := <-ch:
+	//		return op
+	//	//case <- time.After(time.Second):
+	//	//	return Op{}
+	//	}
+	//}(ch)
+	if applyOp != op {
+		reply.Err = TimeOut
+		return
+	}
 	if _, ok := kv.lastSerialNum[applyOp.ClientId]; !ok {
 		kv.lastSerialNum[applyOp.ClientId] = -1
 	}
@@ -105,10 +121,26 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	DPrintf("[Server %d] PutAppend Op:{Op:%v, Key:%v, Value:%v}", kv.me, op.Op, op.Key, op.Value)
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	index, _, _ := kv.rf.Start(op)
+	index, _, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
 	ch := make(chan Op)
 	kv.applyChMap[index] = ch
 	applyOp := <-ch
+	//applyOp := func(ch chan Op) Op{
+	//	select {
+	//	case op := <-ch:
+	//		return op
+	//	//case <- time.After(time.Second):
+	//	//	return Op{}
+	//	}
+	//}(ch)
+	if applyOp != op {
+		reply.Err = TimeOut
+		return
+	}
 	if _, ok := kv.lastSerialNum[applyOp.ClientId]; !ok {
 		kv.lastSerialNum[applyOp.ClientId] = -1
 	}
@@ -116,11 +148,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply = kv.lastResponse[applyOp.ClientId].(*PutAppendReply)
 		return
 	} else {
-		if args.Op == "Put" {
-			kv.data[args.Key] = args.Value
-		} else {
-			kv.data[args.Key] += args.Value
-		}
 		reply.Err = OK
 		kv.lastSerialNum[applyOp.ClientId]++
 		kv.lastResponse[applyOp.ClientId] = reply
@@ -129,6 +156,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 func (kv *KVServer) consumeApplyCh() {
 	for applyMsg := range kv.applyCh {
+		//DPrintf("applyMsg:%v", applyMsg)
+		DPrintf("[Server %d] consumeApplyCh1", kv.me)
 		op := applyMsg.Command.(Op)
 		switch op.Op {
 		case "Put":
@@ -136,9 +165,13 @@ func (kv *KVServer) consumeApplyCh() {
 		case "Append":
 			kv.data[op.Key] += op.Value
 		}
-		index := applyMsg.CommandIndex
-		ch := kv.applyChMap[index]
-		ch <- op
+		_, isLeader := kv.rf.GetState()
+		if isLeader {
+			index := applyMsg.CommandIndex
+			ch := kv.applyChMap[index]
+			ch <- op
+		}
+		DPrintf("[Server %d] consumeApplyCh2", kv.me)
 	}
 }
 
@@ -194,17 +227,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.lastSerialNum = make(map[int]int)
 	kv.lastResponse = make(map[int]interface{})
 	kv.applyChMap = make(map[int]chan Op)
-
-	//go func() {
-	//	time.Sleep(1 * time.Second)
-	//	for {
-	//		_, isLeader := kv.rf.GetState()
-	//		if !isLeader {
-	//			<- kv.applyCh
-	//		}
-	//		time.Sleep(1 * time.Millisecond)
-	//	}
-	//}()
 
 	go kv.consumeApplyCh()
 

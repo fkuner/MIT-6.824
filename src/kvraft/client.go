@@ -66,6 +66,9 @@ func (ck *Clerk) Get(key string) string {
 			} else if reply.Err == ErrNoKey {
 				DPrintf("[Client %d] Get no key", ck.clientID)
 				return ""
+			} else if reply.Err == TimeOut {
+				DPrintf("[Client %d] Timeout", ck.clientID)
+				continue
 			} else {
 				DPrintf("[Client %d] Get success", ck.clientID)
 				DPrintf("[Client %d] GetReply:%v, GetArgs:%v", ck.clientID, reply, args)
@@ -111,6 +114,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			} else if reply.Err == ErrNoKey {
 				DPrintf("[Client %d] PutAppend no key", ck.clientID)
 				return
+			} else if reply.Err == TimeOut {
+				DPrintf("[Client %d] Timeout", ck.clientID)
+				continue
 			} else {
 				DPrintf("[Client %d] PutAppend success", ck.clientID)
 				DPrintf("[Client %d] PutAppendReply:%v, PutAppendArgs:%v", ck.clientID, reply, args)
