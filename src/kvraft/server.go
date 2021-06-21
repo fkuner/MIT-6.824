@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Debug = 1
+const Debug = 0
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -68,9 +68,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		return
 	}
 	ch := make(chan Op)
-	kv.mu.Lock()
 	kv.applyChMap[index] = ch
-	kv.mu.Unlock()
 	//DPrintf("applyOp1")
 	applyOp := func(ch chan Op) Op{
 		select {
@@ -83,6 +81,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	//DPrintf("applyOp2")
 	if applyOp != op {
 		reply.Err = TimeOut
+		delete(kv.applyChMap, index)
 		return
 	}
 	value, ok := kv.data[args.Key]
@@ -115,7 +114,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-	ch := kv.getApplyCh(index)
+	ch := make(chan Op)
+	kv.applyChMap[index] = ch
 	//DPrintf("applyOp1")
 	applyOp := func(ch chan Op) Op{
 		select {
@@ -128,6 +128,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	//DPrintf("applyOp2")
 	if applyOp != op {
 		reply.Err = TimeOut
+		delete(kv.applyChMap, index)
 		return
 	}
 	reply.Err = OK
@@ -155,10 +156,13 @@ func (kv *KVServer) consumeApplyCh() {
 		kv.mu.Unlock()
 		_, isLeader := kv.rf.GetState()
 		if isLeader {
-			ch := kv.getApplyCh(applyMsg.CommandIndex)
-			DPrintf("[Server %d] consumeApplyCh1", kv.me)
-			ch <- op
-			DPrintf("[Server %d] consumeApplyCh2", kv.me)
+			//ch := kv.getApplyCh(applyMsg.CommandIndex)
+			ch, ok := kv.applyChMap[applyMsg.CommandIndex]
+			if ok {
+				DPrintf("[Server %d] consumeApplyCh1", kv.me)
+				ch <- op
+				DPrintf("[Server %d] consumeApplyCh2", kv.me)
+			}
 		}
 	}
 }
@@ -225,6 +229,14 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyChMap = make(map[int]chan Op)
 
 	go kv.consumeApplyCh()
+	//go func() {
+	//	for {
+	//		if persister.RaftStateSize() >= maxraftstate {
+	//
+	//		}
+	//		time.Sleep(10 * time.Second)
+	//	}
+	//}()
 
 	// You may need initialization code here.
 	return kv

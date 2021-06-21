@@ -337,6 +337,37 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
+type InstallSnapshotArgs struct {
+	Term int                     // leader's term
+	LeaderId int                 // so follower can redirect clients
+	LastIncludedIndex int        // the snapshot replaces all entries up through and including this index
+	LastIncludeTerm int          // term of lastIncluded Term
+	Offset int                   // byte offset where chunk is positioned in the snapshot file
+	Data []byte                  // raw bytes of the snapshot chunk, staring at offset
+	Done bool                    // true if this is the last chunk
+}
+
+type InstallSnapshotReply struct {
+	Term int                     // currentTerm, for leader to update itself
+}
+
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		return
+	}
+
+}
+
+//func test()  {
+//	args := InstallSnapshotArgs{
+//
+//	}
+//}
+
+
+
+
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
