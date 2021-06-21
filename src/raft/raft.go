@@ -112,11 +112,13 @@ func (rf *Raft) GetState() (int, bool) {
 	var isleader bool
 	// Your code here (2A).
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	DPrintf("GetState Lock")
 	term = rf.currentTerm
 	if rf.state == LEADER {
 		isleader = true
 	}
+	rf.mu.Unlock()
+	DPrintf("GetState UnLock")
 	return term, isleader
 }
 
@@ -493,6 +495,8 @@ func (rf *Raft) ExecuteLeaderAction() {
 		rf.mu.Lock()
 		for i := rf.commitIndex + 1; i < len(rf.log); i++ {
 			match := 0
+			DPrintf("matchIndex:%v", rf.matchIndex)
+			DPrintf("currentTerm:%v", rf.currentTerm)
 			for j:= 0; j < rf.peerNum; j++{
 				if rf.matchIndex[j] >= i && rf.log[i].Term == rf.currentTerm {
 					match++
@@ -546,7 +550,7 @@ func (rf* Raft) SendHeartBeat() {
 					return
 				}
 				rf.nextIndex[server] = rf.nextIndex[server] + len(entries)
-				rf.matchIndex[server] = preLog.Index
+				rf.matchIndex[server] = preLog.Index + len(entries)
 			} else {
 				if reply.Term > rf.currentTerm {
 					rf.currentTerm = reply.Term
@@ -574,29 +578,21 @@ func (rf* Raft) SendHeartBeat() {
 func (rf *Raft) Apply(applyCh chan ApplyMsg) {
 	for {
 		rf.mu.Lock()
+		//DPrintf("Apply Lock")
 		if rf.commitIndex > rf.lastApplied {
-			DPrintf("apply test1")
 			rf.lastApplied++
 			commandValid := true
-			//select {
-			//case applyCh <- ApplyMsg{
-			//	CommandValid: commandValid,
-			//	Command:      rf.log[rf.lastApplied].Command,
-			//	CommandIndex: rf.log[rf.lastApplied].Index,
-			//}:
-			//	DPrintf("Apply")
-			//case <-time.After(4 * time.Second):
-			//	DPrintf("Timeout")
-			//}
+			DPrintf("apply msg 1")
 			applyCh <- ApplyMsg{
 				CommandValid: commandValid,
 				Command:      rf.log[rf.lastApplied].Command,
 				CommandIndex: rf.log[rf.lastApplied].Index,
 			}
-			DPrintf("apply test2")
+			DPrintf("apply msg 2")
 			DPrintf("[%d] apply command %v", rf.me, rf.log[rf.lastApplied].Command)
 		}
 		rf.mu.Unlock()
+		//DPrintf("Apply UnLock")
 		time.Sleep(10 * time.Millisecond)
 	}
 }
