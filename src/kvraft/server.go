@@ -4,6 +4,7 @@ import (
 	"../labgob"
 	"../labrpc"
 	"../raft"
+	"bytes"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -69,7 +70,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 	ch := make(chan Op)
 	kv.applyChMap[index] = ch
-	//DPrintf("applyOp1")
 	applyOp := func(ch chan Op) Op{
 		select {
 		case op := <-ch:
@@ -78,7 +78,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			return Op{}
 		}
 	}(ch)
-	//DPrintf("applyOp2")
 	if applyOp != op {
 		reply.Err = TimeOut
 		delete(kv.applyChMap, index)
@@ -116,7 +115,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 	ch := make(chan Op)
 	kv.applyChMap[index] = ch
-	//DPrintf("applyOp1")
 	applyOp := func(ch chan Op) Op{
 		select {
 		case op := <-ch:
@@ -125,7 +123,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			return Op{}
 		}
 	}(ch)
-	//DPrintf("applyOp2")
 	if applyOp != op {
 		reply.Err = TimeOut
 		delete(kv.applyChMap, index)
@@ -137,10 +134,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 func (kv *KVServer) consumeApplyCh() {
 	for applyMsg := range kv.applyCh {
 		if applyMsg.Command == "no-op" {
-			//DPrintf("[%d] no-op", kv.me)
 			continue
 		}
-		//DPrintf("applyMsg:%v", applyMsg)
 		kv.mu.Lock()
 		op := applyMsg.Command.(Op)
 		lastSerialNum, found := kv.lastSerialNum[op.ClientId]
@@ -156,24 +151,24 @@ func (kv *KVServer) consumeApplyCh() {
 		kv.mu.Unlock()
 		_, isLeader := kv.rf.GetState()
 		if isLeader {
-			//ch := kv.getApplyCh(applyMsg.CommandIndex)
 			ch, ok := kv.applyChMap[applyMsg.CommandIndex]
 			if ok {
-				DPrintf("[Server %d] consumeApplyCh1", kv.me)
 				ch <- op
-				DPrintf("[Server %d] consumeApplyCh2", kv.me)
 			}
 		}
 	}
 }
 
-func (kv *KVServer) getApplyCh(idx int) chan Op{
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	if _, ok := kv.applyChMap[idx]; !ok {
-		kv.applyChMap[idx] = make(chan Op, 1)
-	}
-	return kv.applyChMap[idx]
+func (kv* KVServer) snapshot() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.lastSerialNum)
+	e.Encode(kv.data)
+	data := w.Bytes()
+	return data
+}
+
+func (kv* KVServer) executeSnapshot() {
 }
 
 //
@@ -229,14 +224,18 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyChMap = make(map[int]chan Op)
 
 	go kv.consumeApplyCh()
-	//go func() {
-	//	for {
-	//		if persister.RaftStateSize() >= maxraftstate {
-	//
-	//		}
-	//		time.Sleep(10 * time.Second)
-	//	}
-	//}()
+	//go kv.executeSnapshot()
+	go func() {
+		for {
+			if persister.RaftStateSize() >= maxraftstate {
+				state := persister.ReadRaftState()
+				snapshot := kv.snapshot()
+				persister.SaveStateAndSnapshot(state, snapshot)
+				kv.rf.DiscardEntries()
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
 	// You may need initialization code here.
 	return kv

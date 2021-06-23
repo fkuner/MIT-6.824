@@ -365,6 +365,11 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 //	}
 //}
 
+func (rf *Raft) DiscardEntries()  {
+	idx := rf.commitIndex
+	rf.log = rf.log[idx+1:]
+	rf.InstallSnapshot()
+}
 
 
 
