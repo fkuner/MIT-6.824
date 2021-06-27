@@ -54,7 +54,6 @@ func (ck *Clerk) Get(key string) string {
 	DPrintf("[Client %d] GetArgs:{Key:%v, SerialNum:%d}", ck.clientID, args.Key, args.SerialNum)
 	for {
 		for i := 0; i < len(ck.servers); i++ {
-			DPrintf("test")
 			reply := GetReply{}
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
 			if !ok {

@@ -228,8 +228,6 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 		}
 		time.Sleep(5 * time.Second)
 
-		DPrintf("test done_client")
-
 		atomic.StoreInt32(&done_clients, 1)     // tell clients to quit
 		atomic.StoreInt32(&done_partitioner, 1) // tell partitioner to quit
 

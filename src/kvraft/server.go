@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -131,9 +131,14 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	reply.Err = OK
 }
 
-func (kv *KVServer) consumeApplyCh() {
+func (kv *KVServer) consumeApplyCh(persister *raft.Persister, maxraftstate int) {
 	for applyMsg := range kv.applyCh {
 		if applyMsg.Command == "no-op" {
+			continue
+		}
+		// snapshot
+		if applyMsg.CommandValid == false {
+			go kv.readSnapshot(applyMsg.Snapshot)
 			continue
 		}
 		kv.mu.Lock()
@@ -156,19 +161,37 @@ func (kv *KVServer) consumeApplyCh() {
 				ch <- op
 			}
 		}
+		if persister.RaftStateSize() >= maxraftstate {
+			DPrintf("[%d] begin snapshot", kv.me)
+			snapshot := kv.snapshot()
+			kv.rf.DiscardEntries(applyMsg.CommandIndex, snapshot)
+		}
 	}
 }
 
 func (kv* KVServer) snapshot() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
-	e.Encode(kv.lastSerialNum)
 	e.Encode(kv.data)
+	e.Encode(kv.lastSerialNum)
 	data := w.Bytes()
 	return data
 }
 
-func (kv* KVServer) executeSnapshot() {
+func (kv* KVServer) readSnapshot(snapshot []byte)  {
+	if snapshot == nil || len(snapshot) < 1 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var data map[string]string
+	var lastSerialNum map[int]int
+	if d.Decode(&data) != nil || d.Decode(&lastSerialNum) != nil {
+		DPrintf("Decode Error")
+	} else {
+		kv.data = data
+		kv.lastSerialNum = lastSerialNum
+	}
 }
 
 //
@@ -223,19 +246,12 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.lastSerialNum = make(map[int]int)
 	kv.applyChMap = make(map[int]chan Op)
 
-	go kv.consumeApplyCh()
-	//go kv.executeSnapshot()
-	go func() {
-		for {
-			if persister.RaftStateSize() >= maxraftstate {
-				state := persister.ReadRaftState()
-				snapshot := kv.snapshot()
-				persister.SaveStateAndSnapshot(state, snapshot)
-				kv.rf.DiscardEntries()
-			}
-			time.Sleep(10 * time.Second)
-		}
-	}()
+	snapshot := persister.ReadSnapshot()
+	if snapshot != nil {
+		kv.readSnapshot(snapshot)
+	}
+
+	go kv.consumeApplyCh(persister, maxraftstate)
 
 	// You may need initialization code here.
 	return kv
