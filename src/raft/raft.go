@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"log"
 	//"bytes"
 	//"labgob"
 	//"labrpc"
@@ -319,13 +318,19 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if rf.getLog(args.PrevLogIndex).Term != args.PrevLogTerm {
 		reply.ConflictTerm = rf.getLog(args.PrevLogIndex).Term
-		index := args.PrevLogIndex - 1
-		for ; index > 0; index-- {
-			if rf.getLog(index).Term != rf.getLog(args.PrevLogIndex).Term {
+		//index := args.PrevLogIndex - 1
+		//for ; index > 0; index-- {
+		//	if rf.getLog(index).Term != rf.getLog(args.PrevLogIndex).Term {
+		//		break
+		//	}
+		//}
+		for i := rf.lastIncludedIndex + 1; i <= args.PrevLogIndex; i++ {
+			if rf.getLog(i).Term == reply.ConflictTerm {
+				reply.ConflictIndex = i
 				break
 			}
 		}
-		reply.ConflictIndex = index + 1
+		//reply.ConflictIndex = index + 1
 		reply.Success = false
 		return
 	}
@@ -615,7 +620,7 @@ func (rf *Raft) executeLeaderAction() {
 		}
 		rf.mu.Unlock()
 		// heartbeat time
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -624,8 +629,6 @@ func (rf* Raft) sendHeartBeat(server int) {
 	currentTerm := rf.currentTerm
 	var preLog Entry
 	if rf.nextIndex[server] > 1 {
-		log.Printf("[%d] log len:%d", rf.me, len(rf.log))
-		log.Printf("[%d] rf.nextIndex:%d", rf.me, rf.nextIndex[server])
 		//if rf.nextIndex[server] <= rf.lastIncludedIndex + 1 {
 		//	preLog = Entry{Index: rf.lastIncludedIndex}
 		//} else {
@@ -757,8 +760,6 @@ func (rf *Raft) encodeRaftState() []byte {
 }
 
 func (rf *Raft) getLog(idx int) Entry {
-	log.Printf("[%d] getLog idx:%d", rf.me, idx)
-	log.Printf("[%d]rf.lastIncludedIndex:%d", rf.me, rf.lastIncludedIndex)
 	if idx == rf.lastIncludedIndex {
 		return Entry{
 			Index: rf.lastIncludedIndex,
