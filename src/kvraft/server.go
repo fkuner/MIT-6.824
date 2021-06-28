@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const Debug = 1
+const Debug = 0
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -69,7 +69,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		return
 	}
 	ch := make(chan Op)
+	kv.mu.Lock()
 	kv.applyChMap[index] = ch
+	kv.mu.Unlock()
 	applyOp := func(ch chan Op) Op{
 		select {
 		case op := <-ch:
@@ -80,7 +82,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}(ch)
 	if applyOp != op {
 		reply.Err = TimeOut
+		kv.mu.Lock()
 		delete(kv.applyChMap, index)
+		kv.mu.Unlock()
 		return
 	}
 	kv.mu.Lock()
@@ -116,7 +120,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 	ch := make(chan Op)
+	kv.mu.Lock()
 	kv.applyChMap[index] = ch
+	kv.mu.Unlock()
 	applyOp := func(ch chan Op) Op{
 		select {
 		case op := <-ch:
@@ -127,7 +133,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}(ch)
 	if applyOp != op {
 		reply.Err = TimeOut
+		kv.mu.Lock()
 		delete(kv.applyChMap, index)
+		kv.mu.Unlock()
 		return
 	}
 	reply.Err = OK
@@ -158,7 +166,9 @@ func (kv *KVServer) consumeApplyCh(persister *raft.Persister, maxraftstate int) 
 		kv.mu.Unlock()
 		_, isLeader := kv.rf.GetState()
 		if isLeader {
+			kv.mu.Lock()
 			ch, ok := kv.applyChMap[applyMsg.CommandIndex]
+			kv.mu.Unlock()
 			if ok {
 				ch <- op
 			}
