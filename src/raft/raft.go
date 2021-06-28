@@ -138,6 +138,8 @@ func (rf *Raft) persist() {
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
+	e.Encode(rf.lastIncludedIndex)
+	e.Encode(rf.lastIncludedTerm)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 }
@@ -157,12 +159,17 @@ func (rf *Raft) readPersist(data []byte) {
 	var currentTerm int
 	var votedFor int
 	var log []Entry
-	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
+	var lastIncludedIndex int
+	var lastIncludedTerm int
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil ||
+		d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
 		DPrintf("Decode Error")
 	} else {
 	  rf.currentTerm = currentTerm
 	  rf.votedFor = votedFor
 	  rf.log = log
+	  rf.lastIncludedIndex = lastIncludedIndex
+	  rf.lastIncludedTerm = lastIncludedTerm
 	}
 }
 
@@ -296,11 +303,26 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	//	reply.Success = false
 	//	return
 	//}
+
+	//log.Printf("lastLogIndex:%d", rf.lastIncludedIndex)
+	//log.Printf("rf.getLoglen:%d", rf.getLogLen())
+
 	if rf.getLogLen() <= args.PrevLogIndex {
 		reply.ConflictTerm = -1
 		reply.ConflictIndex = rf.getLogLen()
 		reply.Success = false
 		return
+	}
+
+	if args.PrevLogIndex < rf.lastIncludedIndex {
+		reply.ConflictIndex = 1
+		reply.Success = false
+		return
+	}
+
+	if args.PrevLogIndex == rf.lastIncludedIndex && args.PrevLogTerm != rf.lastIncludedTerm {
+		reply.ConflictIndex = 1
+		reply.Success =false
 	}
 
 	//if rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
@@ -402,6 +424,10 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 	reply.Term = args.Term
 
+	if args.LastIncludedIndex <= rf.lastIncludedIndex {
+		return
+	}
+
 	if args.LastIncludedIndex < rf.getLogLen() - 1{
 		if rf.getLog(args.LastIncludedIndex).Term == args.LastIncludeTerm {
 			rf.log = append(make([]Entry, 0), rf.log[args.LastIncludedIndex-rf.lastIncludedIndex:]...)
@@ -411,6 +437,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	} else {
 		rf.log = make([]Entry, 0)
 	}
+	//log.Printf("test")
 	rf.lastIncludedIndex = args.LastIncludedIndex
 	rf.lastIncludedTerm = args.LastIncludeTerm
 	rf.lastApplied = int(math.Max(float64(rf.lastApplied), float64(rf.lastIncludedIndex)))
@@ -599,6 +626,8 @@ func (rf *Raft) executeLeaderAction() {
 				continue
 			}
 			rf.mu.Lock()
+			//log.Printf("[%d] nextIndex:%d", rf.me, rf.nextIndex[server])
+			//log.Printf("[%d] lastIncludedIndex:%d", rf.me, rf.lastIncludedIndex)
 			if rf.nextIndex[server] <= rf.lastIncludedIndex {
 				go rf.sendSnapshot(server)
 			} else {
@@ -620,7 +649,7 @@ func (rf *Raft) executeLeaderAction() {
 		}
 		rf.mu.Unlock()
 		// heartbeat time
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
@@ -636,6 +665,7 @@ func (rf* Raft) sendHeartBeat(server int) {
 		//}
 		preLog = rf.getLog(rf.nextIndex[server] - 1)
 	}
+	//log.Printf("preLog.Index:%d", preLog.Index)
 	entries := make([]Entry, rf.getLogLen() - 1 - preLog.Index)
 	copy(entries, rf.log[rf.convertIndex(preLog.Index + 1):])
 	args := AppendEntriesArgs{
@@ -691,6 +721,7 @@ func (rf* Raft) sendHeartBeat(server int) {
 }
 
 func (rf* Raft) sendSnapshot(server int) {
+	//log.Printf("send Snapshot")
 	args := InstallSnapshotArgs{
 		Term: rf.currentTerm,
 		LastIncludedIndex: rf.lastIncludedIndex,
@@ -743,6 +774,7 @@ func (rf *Raft) DiscardEntries(lastIncludedIndex int, snapshot []byte)  {
 	rf.lastIncludedTerm = rf.getLog(lastIncludedIndex).Term
 	rf.lastIncludedIndex = lastIncludedIndex
 	rf.log = append(make([]Entry, 0), rf.log[idx:]...)
+	//log.Printf("trim")
 	raftState := rf.encodeRaftState()
 	rf.persister.SaveStateAndSnapshot(raftState, snapshot)
 }
@@ -816,6 +848,14 @@ func isLogNew(log1LastIndex int, log1LastTerm int, log2LastIndex int, log2LastTe
 	}
 }
 
+func Max(num1 int, num2 int) int {
+	if num1 >= num2 {
+		return num1
+	} else {
+		return num2
+	}
+}
+
 //
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -875,6 +915,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+
+	rf.mu.Lock()
+	rf.lastApplied = Max(rf.lastApplied, rf.lastIncludedIndex)
+	rf.commitIndex = Max(rf.commitIndex, rf.lastIncludedIndex)
+	rf.mu.Unlock()
 
 	return rf
 }

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -83,7 +83,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		delete(kv.applyChMap, index)
 		return
 	}
+	kv.mu.Lock()
 	value, ok := kv.data[args.Key]
+	kv.mu.Unlock()
 	if !ok {
 		reply.Err = ErrNoKey
 		return
@@ -170,6 +172,8 @@ func (kv *KVServer) consumeApplyCh(persister *raft.Persister, maxraftstate int) 
 }
 
 func (kv* KVServer) snapshot() []byte {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(kv.data)
@@ -179,6 +183,8 @@ func (kv* KVServer) snapshot() []byte {
 }
 
 func (kv* KVServer) readSnapshot(snapshot []byte)  {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
 	if snapshot == nil || len(snapshot) < 1 {
 		return
 	}
