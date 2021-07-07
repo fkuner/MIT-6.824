@@ -1,8 +1,8 @@
-课程链接：http://nil.csail.mit.edu/6.824/2020/
+课程链接：http://nil.csail.mit.edu/6.824/2020
 
 GitHub链接：https://github.com/fkuner/6.824
 
-Raft：https://raft.github.io/
+Raft：https://raft.github.io
 
 ## Lecture
 ### Lecture1 MapReduce
